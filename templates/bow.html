@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Bag of Words</title>
+</head>
+<body>
+    <h1>Bag of Words</h1>
+    <p><a href="/">Home</a></p>
+
+    <form method="post">
+        <textarea name="text" rows="10" cols="80">{{ text }}</textarea><br>
+        <button type="submit">Analyze</button>
+    </form>
+
+    {% if results %}
+        <h2>Report</h2>
+        <p>Total unique words: {{ total_unique }}</p>
+        <p>Total words counted: {{ total_words }}</p>
+
+        <table border="1" cellpadding="5">
+            <tr><th>Word</th><th>Count</th></tr>
+            {% for word, count in results %}
+            <tr>
+                <td>{{ word }}</td>
+                <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    {% endif %}
+</body>
+</html>
