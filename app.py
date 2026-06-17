@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request
 from sklearn.feature_extraction.text import CountVectorizer
 import boto3
+import os
+import psycopg2
 
 app = Flask(__name__)
 textract = boto3.client("textract", region_name="us-east-2")
@@ -27,6 +29,39 @@ def extract_text_from_image(file_bytes):
     return "\n".join(lines)
 
 
+def save_bow_summary_to_postgres(source, input_text, total_unique, total_words):
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        return
+
+    conn = psycopg2.connect(database_url)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS bow_runs (
+                        id SERIAL PRIMARY KEY,
+                        source TEXT NOT NULL,
+                        input_text TEXT NOT NULL,
+                        total_unique INTEGER NOT NULL,
+                        total_words INTEGER NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    INSERT INTO bow_runs (source, input_text, total_unique, total_words)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (source, input_text, total_unique, total_words),
+                )
+    finally:
+        conn.close()
+
+
 @app.route("/")
 def home():
     return render_template("home.html")
@@ -46,6 +81,7 @@ def bow():
             results = make_bow(text)
             total_unique = len(results)
             total_words = sum(count for _, count in results)
+            save_bow_summary_to_postgres("bow", text, total_unique, total_words)
 
     return render_template(
         "bow.html",
@@ -74,6 +110,7 @@ def ocr():
                 results = make_bow(extracted_text)
                 total_unique = len(results)
                 total_words = sum(count for _, count in results)
+                save_bow_summary_to_postgres("ocr", extracted_text, total_unique, total_words)
 
     return render_template(
         "ocr.html",
