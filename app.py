@@ -29,13 +29,22 @@ def extract_text_from_image(file_bytes):
     return "\n".join(lines)
 
 
-def save_bow_summary_to_postgres(source, input_text, total_unique, total_words):
+def get_db_connection():
     database_url = os.getenv("DATABASE_URL")
-
     if not database_url:
+        return None
+    return psycopg2.connect(database_url)
+
+
+def save_bow_to_postgres(source, input_text, results):
+    conn = get_db_connection()
+    if conn is None:
         return
 
-    conn = psycopg2.connect(database_url)
+    normalized_results = [(word, int(count)) for word, count in results]
+    total_unique = int(len(normalized_results))
+    total_words = int(sum(count for _, count in normalized_results))
+
     try:
         with conn:
             with conn.cursor() as cur:
@@ -53,13 +62,84 @@ def save_bow_summary_to_postgres(source, input_text, total_unique, total_words):
                 )
                 cur.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS bow_items (
+                        id SERIAL PRIMARY KEY,
+                        run_id INTEGER NOT NULL REFERENCES bow_runs(id) ON DELETE CASCADE,
+                        word TEXT NOT NULL,
+                        count INTEGER NOT NULL
+                    )
+                    """
+                )
+                cur.execute(
+                    """
                     INSERT INTO bow_runs (source, input_text, total_unique, total_words)
                     VALUES (%s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (source, input_text, total_unique, total_words),
                 )
+                run_id = cur.fetchone()[0]
+
+                if normalized_results:
+                    cur.executemany(
+                        """
+                        INSERT INTO bow_items (run_id, word, count)
+                        VALUES (%s, %s, %s)
+                        """,
+                        [(run_id, word, count) for word, count in normalized_results],
+                    )
     finally:
         conn.close()
+
+
+def get_history(limit=50):
+    conn = get_db_connection()
+    if conn is None:
+        return []
+
+    runs = []
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, source, input_text, total_unique, total_words, created_at
+                    FROM bow_runs
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (int(limit),),
+                )
+                run_rows = cur.fetchall()
+
+                for run_id, source, input_text, total_unique, total_words, created_at in run_rows:
+                    cur.execute(
+                        """
+                        SELECT word, count
+                        FROM bow_items
+                        WHERE run_id = %s
+                        ORDER BY count DESC, word ASC
+                        """,
+                        (run_id,),
+                    )
+                    item_rows = cur.fetchall()
+                    items = [(word, int(count)) for word, count in item_rows]
+
+                    runs.append(
+                        {
+                            "id": run_id,
+                            "source": source,
+                            "input_text": input_text,
+                            "total_unique": int(total_unique),
+                            "total_words": int(total_words),
+                            "created_at": created_at,
+                            "items": items,
+                        }
+                    )
+    finally:
+        conn.close()
+
+    return runs
 
 
 @app.route("/")
@@ -81,7 +161,7 @@ def bow():
             results = make_bow(text)
             total_unique = len(results)
             total_words = sum(count for _, count in results)
-            save_bow_summary_to_postgres("bow", text, total_unique, total_words)
+            save_bow_to_postgres("bow", text, results)
 
     return render_template(
         "bow.html",
@@ -110,7 +190,7 @@ def ocr():
                 results = make_bow(extracted_text)
                 total_unique = len(results)
                 total_words = sum(count for _, count in results)
-                save_bow_summary_to_postgres("ocr", extracted_text, total_unique, total_words)
+                save_bow_to_postgres("ocr", extracted_text, results)
 
     return render_template(
         "ocr.html",
@@ -119,6 +199,12 @@ def ocr():
         total_unique=total_unique,
         total_words=total_words,
     )
+
+
+@app.route("/history")
+def history():
+    runs = get_history(limit=50)
+    return render_template("history.html", runs=runs)
 
 
 if __name__ == "__main__":

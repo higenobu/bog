@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>History</title>
+</head>
+<body>
+    <h1>History</h1>
+    <p><a href="/">Home</a> | <a href="/bow">Bag of Words</a> | <a href="/ocr">OCR</a></p>
+
+    {% if runs %}
+        {% for run in runs %}
+            <hr>
+            <h2>Run #{{ run.id }} ({{ run.source }})</h2>
+            <p><strong>Created:</strong> {{ run.created_at }}</p>
+            <p><strong>Total unique words:</strong> {{ run.total_unique }}</p>
+            <p><strong>Total words counted:</strong> {{ run.total_words }}</p>
+            <p><strong>Input text:</strong></p>
+            <pre>{{ run.input_text }}</pre>
+
+            {% if run.items %}
+                <h3>Items</h3>
+                <table border="1" cellpadding="5">
+                    <tr><th>Word</th><th>Count</th></tr>
+                    {% for word, count in run.items %}
+                    <tr>
+                        <td>{{ word }}</td>
+                        <td>{{ count }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <p>No items found for this run.</p>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p>No history found.</p>
+    {% endif %}
+</body>
+</html>
