@@ -22,7 +22,7 @@
                 <h3>Items</h3>
                 <table border="1" cellpadding="5">
                     <tr><th>Word</th><th>Count</th></tr>
-                    {% for word, count in run.items %}
+                    {% for word, count in run["items"] %}
                     <tr>
                         <td>{{ word }}</td>
                         <td>{{ count }}</td>
